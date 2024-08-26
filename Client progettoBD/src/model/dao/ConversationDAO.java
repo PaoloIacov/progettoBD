@@ -12,28 +12,48 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-public class ConversationDAO implements GeneralDAO {
+public class ConversationDAO implements GeneralDAO<Object> {
 
     @Override
-    public Conversation execute(Object... params) throws DAOException {
-        String descrizione = (String) params[0];
-        String nomeProgetto = (String) params[1];
+    public Object execute(Object... params) throws DAOException {
+        String operation = (String) params[0];
 
+        switch (operation) {
+            case "createConversation":
+                return createConversation((String) params[1], (String) params[2], (ConversationType) params[3]);
+            case "addEmployeeToConversation":
+                addEmployeeToConversation((Long) params[1], (String) params[2]);
+                break;
+            case "removeEmployeeFromConversation":
+                removeEmployeeFromConversation((Long) params[1], (String) params[2]);
+                break;
+            case "closeConversation":
+                closeConversation((Long) params[1]);
+                break;
+            case "getConversationsByEmployee":
+                return getConversationsByEmployee((String) params[1]);
+            case "openPrivateConversation":
+                return openPrivateConversation((String) params[1], (String) params[2]);
+            default:
+                throw new DAOException("Operazione non supportata: " + operation);
+        }
+        return null;
+    }
+
+    // Metodo per creare una conversazione (pubblica o privata)
+    private Conversation createConversation(String descrizione, String nomeProgetto, ConversationType tipo) throws DAOException {
         Connection connection = null;
         CallableStatement callableStatement = null;
         Long id = null;
 
         try {
-
             connection = ConnectionSingleton.getConnection();
-
             callableStatement = connection.prepareCall("{call CreateConversation(?, ?, ?)}");
             callableStatement.setString(1, descrizione);
             callableStatement.setString(2, nomeProgetto);
+            callableStatement.setString(3, tipo.name());
 
-            callableStatement.execute();
-
-            //Recupero ID
+            // Recupero ID
             ResultSet generatedKeys = callableStatement.getGeneratedKeys();
             if (generatedKeys.next()) {
                 id = generatedKeys.getLong(1);
@@ -41,20 +61,16 @@ public class ConversationDAO implements GeneralDAO {
 
         } catch (SQLException e) {
             throw new DAOException("Errore nella creazione della conversazione: " + e.getMessage(), e);
-
         }
 
-        return new Conversation(id, descrizione, nomeProgetto, ConversationState.APERTA, ConversationType.PUBBLICA);
+        return new Conversation(id, descrizione, nomeProgetto, ConversationState.APERTA, tipo);
     }
 
     // Metodo che aggiunge un dipendente ad una conversazione
-    public void addEmployeeToConversation(Long conversazioneID, String usernameDipendente) throws DAOException {
-        Connection connection = null;
-        CallableStatement callableStatement = null;
-
+    private void addEmployeeToConversation(Long conversazioneID, String usernameDipendente) throws DAOException {
         try {
-            connection = ConnectionSingleton.getConnection();
-            callableStatement = connection.prepareCall("{call AddEmployeeToConversation(?, ?)}");
+            Connection connection = ConnectionSingleton.getConnection();
+            CallableStatement callableStatement = connection.prepareCall("{call AddEmployeeToConversation(?, ?)}");
 
             callableStatement.setLong(1, conversazioneID);
             callableStatement.setString(2, usernameDipendente);
@@ -67,9 +83,7 @@ public class ConversationDAO implements GeneralDAO {
     }
 
     // Metodo che rimuove un dipendente da una conversazione
-    public void removeEmployeeFromConversation(Long conversazioneID, String usernameDipendente) throws DAOException {
-
-
+    private void removeEmployeeFromConversation(Long conversazioneID, String usernameDipendente) throws DAOException {
         try {
             Connection connection = ConnectionSingleton.getConnection();
             CallableStatement callableStatement = connection.prepareCall("{call RemoveEmployeeFromConversation(?, ?)}");
@@ -85,13 +99,10 @@ public class ConversationDAO implements GeneralDAO {
     }
 
     // Metodo che chiude una conversazione
-    public void closeConversation(Long conversazioneID) throws DAOException {
-        Connection connection = null;
-        CallableStatement callableStatement = null;
-
+    private void closeConversation(Long conversazioneID) throws DAOException {
         try {
-            connection = ConnectionSingleton.getConnection();
-            callableStatement = connection.prepareCall("{call CloseConversation(?)}");
+            Connection connection = ConnectionSingleton.getConnection();
+            CallableStatement callableStatement = connection.prepareCall("{call CloseConversation(?)}");
 
             callableStatement.setLong(1, conversazioneID);
 
@@ -103,9 +114,9 @@ public class ConversationDAO implements GeneralDAO {
     }
 
     public Conversation openPrivateConversation(String descrizione, String nomeProgetto) throws DAOException {
+        Long id = null;
 
         try {
-
             Connection connection = ConnectionSingleton.getConnection();
 
             CallableStatement callableStatement = connection.prepareCall("{call CreateConversation(?, ?, ?)}");
@@ -113,24 +124,33 @@ public class ConversationDAO implements GeneralDAO {
             callableStatement.setString(2, nomeProgetto);
             callableStatement.setString(3, ConversationType.PRIVATA.name());
 
-            //Recupero ID
+
             ResultSet resultSet = callableStatement.executeQuery();
             if (resultSet.next()) {
-                Long ID = resultSet.getLong("id");
+                id = resultSet.getLong(1);
             }
 
         } catch (SQLException e) {
             throw new DAOException("Errore nella creazione della conversazione privata: " + e.getMessage(), e);
         }
-        return new Conversation(descrizione, nomeProgetto, ConversationState.APERTA, ConversationType.PRIVATA);
+
+        // Verificare che l'ID sia stato recuperato correttamente
+        if (id == null) {
+            throw new DAOException("Errore nel recupero dell'ID della conversazione.");
+        }
+
+        // Restituisce l'oggetto Conversation con l'ID corretto
+        return new Conversation(id, descrizione, nomeProgetto, ConversationState.APERTA, ConversationType.PRIVATA);
     }
 
-    public List<Conversation> getConversationsByEmployee(String usernameDipendente) throws DAOException {
+
+
+    // Metodo per ottenere tutte le conversazioni di un dipendente
+    private List<Conversation> getConversationsByEmployee(String usernameDipendente) throws DAOException {
         List<Conversation> conversations = new ArrayList<>();
 
         try {
             Connection connection = ConnectionSingleton.getConnection();
-
             CallableStatement callableStatement = connection.prepareCall("{call GetConversationsByEmployee(?)}");
             callableStatement.setString(1, usernameDipendente);
 
@@ -143,7 +163,6 @@ public class ConversationDAO implements GeneralDAO {
                 ConversationState stato = ConversationState.valueOf(resultSet.getString("stato"));
                 ConversationType tipo = ConversationType.valueOf(resultSet.getString("tipo"));
 
-                // Creare l'oggetto Conversation e aggiungerlo alla lista
                 Conversation conversation = new Conversation(id, descrizione, nomeProgetto, stato, tipo);
                 conversations.add(conversation);
             }

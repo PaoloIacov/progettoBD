@@ -27,6 +27,10 @@ public class Conversation {
         this.type = type;
     }
 
+    public Long getID() {
+        return ID;
+    }
+
     public String getDescription() {
         return description;
     }
